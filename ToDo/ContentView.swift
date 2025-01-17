@@ -8,11 +8,7 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Views
-
-// 메인 컨텐츠 뷰
 struct ContentView: View {
-    // MARK: Properties
     @Environment(\.modelContext) private var modelContext
     @Query private var items: [TodoItem]
     
@@ -28,16 +24,14 @@ struct ContentView: View {
         TodoItem(title: "Todo 프로젝트 깃허브에 올리기", description: "")
     ]
     
-    private var sortedItems: [TodoItem] {
-        items.sorted { !$0.isCompleted && $1.isCompleted }
-    }
-    
     // MARK: Body
     var body: some View {
         NavigationView {
             List {
-                ForEach(sortedItems) { todo in
-                    TodoRowView(todo: todo, editingItemID: $editingItemID)
+                ForEach(items) { todo in
+                    TodoRowView(todo: todo, editingItemID: $editingItemID, onCompletion: { completedTodo in
+                        handleCompletion(for: completedTodo)
+                    })
                 }
                 .onDelete(perform: deleteItems)
             }
@@ -50,16 +44,17 @@ struct ContentView: View {
         }
         .onAppear {
             // 앱이 처음 실행될 때만 초기 데이터 추가
-            if items.isEmpty {
+            if !isInitialDataLoaded {
                 for todo in initialTodos {
                     modelContext.insert(todo)
                 }
+                isInitialDataLoaded = true
             }
         }
     }
     
     // MARK: Methods
-    /// Todo 추가
+    // Todo 추가
     private func addItem() {
         let newNumber = items.count + 1
         let newTaskTitle = "새로운 할 일 \(newNumber)"
@@ -67,34 +62,48 @@ struct ContentView: View {
         modelContext.insert(newItem)
     }
     
-    /// Todo 삭제
+    // Todo 삭제
     private func deleteItems(offsets: IndexSet) {
         for index in offsets {
-            let todo = sortedItems[index]
+            let todo = items[index]
             modelContext.delete(todo)
+        }
+    }
+    
+    // 완료 처리
+    private func handleCompletion(for todo: TodoItem) {
+        // 3초 후에 삭제
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            withAnimation {
+                modelContext.delete(todo)
+            }
         }
     }
 }
 
 // MARK: - Supporting Views
-/// Todo 아이템의 행을 표시하는 뷰
+// Todo 아이템의 행을 표시 뷰
 struct TodoRowView: View {
-    @Environment(\.modelContext) private var modelContext
-    let todo: TodoItem
+    @Bindable var todo: TodoItem
     @Binding var editingItemID: UUID?
+    var onCompletion: (TodoItem) -> Void
     
     var body: some View {
         HStack {
             CompletionButton(isCompleted: Binding(
                 get: { todo.isCompleted },
-                set: { todo.isCompleted = $0 }
+                set: { newValue in
+                    withAnimation {
+                        todo.isCompleted = newValue
+                        if newValue {
+                            onCompletion(todo)
+                        }
+                    }
+                }
             ))
             
             if editingItemID == todo.id {
-                EditingTextField(title: Binding(
-                    get: { todo.title },
-                    set: { todo.title = $0 }
-                )) {
+                EditingTextField(title: $todo.title) {
                     editingItemID = nil
                 }
             } else {
