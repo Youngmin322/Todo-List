@@ -9,36 +9,42 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\..modelContext) private var modelContext
     @Query private var items: [TodoItem]
     
     // 현재 편집 중인 아이템의 ID
     @State private var editingItemID: UUID? = nil
     
-    // 초기 데이터가 이미 추가되었는지 확인하는 플래그
+    // 초기 데이터가 이미 추가되었는지 확인
     @AppStorage("isInitialDataLoaded") private var isInitialDataLoaded = false
     
+    // 검색 문자열
+    @State private var searchText: String = ""
+
     private var initialTodos = [
         TodoItem(title: "Todo 프로젝트 제작하기", description: "기능 구현 완료하기"),
         TodoItem(title: "Todo 프로젝트 발표 준비하기", description: "오후 4시 진행"),
         TodoItem(title: "Todo 프로젝트 깃허브에 올리기", description: "")
     ]
-    
+
     // MARK: Body
     var body: some View {
         NavigationView {
-            List {
-                ForEach(items) { todo in
-                    TodoRowView(todo: todo, editingItemID: $editingItemID, onCompletion: { completedTodo in
-                        handleCompletion(for: completedTodo)
-                    })
+            VStack {
+                SearchBar(text: $searchText)
+                List {
+                    ForEach(filteredItems) { todo in
+                        TodoRowView(todo: todo, editingItemID: $editingItemID, onCompletion: { completedTodo in
+                            handleCompletion(for: completedTodo)
+                        })
+                    }
+                    .onDelete(perform: deleteItems)
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .navigationTitle("Todo List")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    AddButton(action: addItem)
+                .navigationTitle("Todo List")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        AddButton(action: addItem)
+                    }
                 }
             }
         }
@@ -52,8 +58,15 @@ struct ContentView: View {
             }
         }
     }
-    
-    // MARK: Methods
+
+    // 필터링된 항목
+    private var filteredItems: [TodoItem] {
+        if searchText.isEmpty {
+            return items
+        } else {
+            return items.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+        }
+    }
     // Todo 추가
     private func addItem() {
         let newNumber = items.count + 1
@@ -61,7 +74,7 @@ struct ContentView: View {
         let newItem = TodoItem(title: newTaskTitle, description: "")
         modelContext.insert(newItem)
     }
-    
+
     // Todo 삭제
     private func deleteItems(offsets: IndexSet) {
         for index in offsets {
@@ -69,7 +82,7 @@ struct ContentView: View {
             modelContext.delete(todo)
         }
     }
-    
+
     // 완료 처리
     private func handleCompletion(for todo: TodoItem) {
         // 3초 후에 삭제
@@ -82,12 +95,37 @@ struct ContentView: View {
 }
 
 // MARK: - Supporting Views
-// Todo 아이템의 행을 표시 뷰
+// 검색 바 뷰
+struct SearchBar: View {
+    @Binding var text: String
+
+    var body: some View {
+        HStack {
+            TextField("검색", text: $text)
+                .padding(7)
+                .background(Color(.systemGray6))
+                .cornerRadius(8)
+                .padding(.horizontal, 10)
+
+            if !text.isEmpty {
+                Button(action: {
+                    text = ""
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.gray)
+                }
+                .padding(.trailing, 10)
+            }
+        }
+    }
+}
+
+// Todo 아이템 행 표시 뷰
 struct TodoRowView: View {
     @Bindable var todo: TodoItem
     @Binding var editingItemID: UUID?
     var onCompletion: (TodoItem) -> Void
-    
+
     var body: some View {
         HStack {
             CompletionButton(isCompleted: Binding(
@@ -101,7 +139,7 @@ struct TodoRowView: View {
                     }
                 }
             ))
-            
+
             if editingItemID == todo.id {
                 EditingTextField(title: $todo.title) {
                     editingItemID = nil
@@ -119,7 +157,7 @@ struct TodoRowView: View {
 /// 완료 버튼
 struct CompletionButton: View {
     @Binding var isCompleted: Bool
-    
+
     var body: some View {
         Button(action: { isCompleted.toggle() }) {
             Image(systemName: isCompleted ? "smallcircle.filled.circle" : "circle")
@@ -133,18 +171,18 @@ struct CompletionButton: View {
 struct EditingTextField: View {
     @Binding var title: String
     var onCommit: () -> Void
-    
+
     var body: some View {
         TextField("할 일", text: $title, onCommit: onCommit)
             .textFieldStyle(RoundedBorderTextFieldStyle())
     }
 }
 
-/// Todo 아이템의 제목을 표시하는 뷰
+/// Todo 제목 뷰
 struct TodoTitleView: View {
     let title: String
     let isCompleted: Bool
-    
+
     var body: some View {
         Text(title)
             .strikethrough(isCompleted, color: .gray)
@@ -152,10 +190,10 @@ struct TodoTitleView: View {
     }
 }
 
-/// 새로운 할 일을 추가하는 버튼
+/// todo 추가 버튼
 struct AddButton: View {
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             Image(systemName: "plus")
